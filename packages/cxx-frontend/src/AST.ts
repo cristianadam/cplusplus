@@ -4089,17 +4089,43 @@ export class LabeledStatementAST extends StatementAST {
   }
 
   /**
+   * Returns the attributeList of this node
+   */
+  getAttributeList(): Iterable<AttributeSpecifierAST | undefined> {
+    let it = cxx.getASTSlot(this.getHandle(), 0);
+    let value: AttributeSpecifierAST | undefined;
+    let done = false;
+    const p = this.parser;
+    function advance() {
+      done = it === 0;
+      if (done) return;
+      const ast = cxx.getListValue(it);
+      value = AST.from<AttributeSpecifierAST>(ast, p);
+      it = cxx.getListNext(it);
+    }
+    function next() {
+      advance();
+      return { done, value };
+    }
+    return {
+      [Symbol.iterator]() {
+        return { next };
+      },
+    };
+  }
+
+  /**
    * Returns the location of the identifier token in this node
    */
   getIdentifierToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 0), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 1), this.parser);
   }
 
   /**
    * Returns the location of the colon token in this node
    */
   getColonToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 1), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 2), this.parser);
   }
 
   /**
@@ -4107,7 +4133,7 @@ export class LabeledStatementAST extends StatementAST {
    */
   getStatement(): StatementAST | undefined {
     return AST.from<StatementAST>(
-      cxx.getASTSlot(this.getHandle(), 2),
+      cxx.getASTSlot(this.getHandle(), 3),
       this.parser,
     );
   }
@@ -4116,7 +4142,7 @@ export class LabeledStatementAST extends StatementAST {
    * Returns the identifier attribute of this node
    */
   getIdentifier(): string | undefined {
-    const slot = cxx.getASTSlot(this.getHandle(), 3);
+    const slot = cxx.getASTSlot(this.getHandle(), 4);
     return cxx.getIdentifierValue(slot);
   }
 }
@@ -4139,10 +4165,36 @@ export class CaseStatementAST extends StatementAST {
   }
 
   /**
+   * Returns the attributeList of this node
+   */
+  getAttributeList(): Iterable<AttributeSpecifierAST | undefined> {
+    let it = cxx.getASTSlot(this.getHandle(), 0);
+    let value: AttributeSpecifierAST | undefined;
+    let done = false;
+    const p = this.parser;
+    function advance() {
+      done = it === 0;
+      if (done) return;
+      const ast = cxx.getListValue(it);
+      value = AST.from<AttributeSpecifierAST>(ast, p);
+      it = cxx.getListNext(it);
+    }
+    function next() {
+      advance();
+      return { done, value };
+    }
+    return {
+      [Symbol.iterator]() {
+        return { next };
+      },
+    };
+  }
+
+  /**
    * Returns the location of the case token in this node
    */
   getCaseToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 0), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 1), this.parser);
   }
 
   /**
@@ -4150,7 +4202,7 @@ export class CaseStatementAST extends StatementAST {
    */
   getExpression(): ExpressionAST | undefined {
     return AST.from<ExpressionAST>(
-      cxx.getASTSlot(this.getHandle(), 1),
+      cxx.getASTSlot(this.getHandle(), 2),
       this.parser,
     );
   }
@@ -4159,7 +4211,7 @@ export class CaseStatementAST extends StatementAST {
    * Returns the location of the colon token in this node
    */
   getColonToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 2), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 3), this.parser);
   }
 }
 
@@ -4181,17 +4233,43 @@ export class DefaultStatementAST extends StatementAST {
   }
 
   /**
+   * Returns the attributeList of this node
+   */
+  getAttributeList(): Iterable<AttributeSpecifierAST | undefined> {
+    let it = cxx.getASTSlot(this.getHandle(), 0);
+    let value: AttributeSpecifierAST | undefined;
+    let done = false;
+    const p = this.parser;
+    function advance() {
+      done = it === 0;
+      if (done) return;
+      const ast = cxx.getListValue(it);
+      value = AST.from<AttributeSpecifierAST>(ast, p);
+      it = cxx.getListNext(it);
+    }
+    function next() {
+      advance();
+      return { done, value };
+    }
+    return {
+      [Symbol.iterator]() {
+        return { next };
+      },
+    };
+  }
+
+  /**
    * Returns the location of the default token in this node
    */
   getDefaultToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 0), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 1), this.parser);
   }
 
   /**
    * Returns the location of the colon token in this node
    */
   getColonToken(): Token | undefined {
-    return Token.from(cxx.getASTSlot(this.getHandle(), 1), this.parser);
+    return Token.from(cxx.getASTSlot(this.getHandle(), 2), this.parser);
   }
 }
 

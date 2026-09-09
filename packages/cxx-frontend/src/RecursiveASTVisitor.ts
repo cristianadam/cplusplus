@@ -823,6 +823,9 @@ export class RecursiveASTVisitor<Context> extends ASTVisitor<Context, void> {
    * @param context The context.
    */
   visitLabeledStatement(node: ast.LabeledStatementAST, context: Context): void {
+    for (const element of node.getAttributeList()) {
+      this.accept(element, context);
+    }
     this.accept(node.getStatement(), context);
   }
 
@@ -833,6 +836,9 @@ export class RecursiveASTVisitor<Context> extends ASTVisitor<Context, void> {
    * @param context The context.
    */
   visitCaseStatement(node: ast.CaseStatementAST, context: Context): void {
+    for (const element of node.getAttributeList()) {
+      this.accept(element, context);
+    }
     this.accept(node.getExpression(), context);
   }
 
@@ -842,10 +848,11 @@ export class RecursiveASTVisitor<Context> extends ASTVisitor<Context, void> {
    * @param node The node to visit.
    * @param context The context.
    */
-  visitDefaultStatement(
-    node: ast.DefaultStatementAST,
-    context: Context,
-  ): void {}
+  visitDefaultStatement(node: ast.DefaultStatementAST, context: Context): void {
+    for (const element of node.getAttributeList()) {
+      this.accept(element, context);
+    }
+  }
 
   /**
    * Visit a ExpressionStatement node.
