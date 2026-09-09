@@ -1,7 +1,10 @@
 #include <cxx/control.h>
 #include <cxx/diagnostics_client.h>
 #include <cxx/preprocessor.h>
+#include <cxx/memory_layout.h>
 #include <cxx/preprocessor_delegate.h>
+#include <cxx/symbols.h>
+#include <cxx/translation_unit.h>
 #include <gtest/gtest.h>
 
 #include <string>
@@ -360,4 +363,97 @@ TEST(PreprocessorDelegate, reports_nothing_without_a_delegate) {
   preprocessor.preprocess("#define A 1\nint x = A;\n", "test.cc", tokens);
 
   EXPECT_EQ(preprocessor.preprocessorDelegate(), nullptr);
+}
+
+// A scope says how far it reaches, which is what makes it possible to ask
+// which scope a place in the text is in.
+
+namespace {
+
+// A translation unit that can be parsed without reference to the host.
+struct MemoryLayoutFixture {
+  MemoryLayout layout{64};
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit{&diagnostics};
+
+  MemoryLayoutFixture() {
+    unit.control()->setMemoryLayout(&layout);
+    unit.preprocessor()->setCanResolveFiles(false);
+  }
+};
+
+// The innermost scope written around the token at the given index, by name.
+auto innermostScopeAt(TranslationUnit& unit, unsigned tokenIndex) -> std::string {
+  const SourceLocation loc{tokenIndex};
+
+  std::string found;
+  const auto consider = [&](auto&& self, ScopeSymbol* inner) -> void {
+    if (!inner->contains(loc)) return;
+    if (inner->name()) found = to_string(inner->name());
+    self(self, inner);
+  };
+  const auto walk = [&](auto&& self, ScopeSymbol* scope) -> void {
+    for (Symbol* member : scope->members()) {
+      // A function is reached through the overload set it lives in, which is
+      // not itself a scope.
+      if (auto* overloadSet = symbol_cast<OverloadSetSymbol>(member)) {
+        for (auto* function : overloadSet->declaredFunctions()) consider(self, function);
+        continue;
+      }
+      if (auto* inner = member->asScopeSymbol()) consider(self, inner);
+    }
+  };
+  walk(walk, unit.globalScope());
+  return found;
+}
+
+// The index of the first token whose text is the one given.
+auto tokenIndexOf(TranslationUnit& unit, std::string_view text) -> unsigned {
+  for (unsigned i = 1; i < unit.tokenCount(); ++i) {
+    if (unit.tokenText(SourceLocation{i}) == text) return i;
+  }
+  return 0;
+}
+
+}  // namespace
+
+TEST(ScopeExtent, saysWhichScopeAPlaceIsIn) {
+  MemoryLayoutFixture fixture;
+  auto& unit = fixture.unit;
+
+  unit.setSource(
+      "void outside() {}\n"
+      "namespace N {\n"
+      "struct S {\n"
+      "  void m() { int inner; }\n"
+      "};\n"
+      "}\n",
+      "test.cc");
+  unit.parse({.checkTypes = true});
+
+  EXPECT_EQ(innermostScopeAt(unit, tokenIndexOf(unit, "inner")), "m");
+}
+
+TEST(ScopeExtent, aScopeDoesNotReachPastItsEnd) {
+  MemoryLayoutFixture fixture;
+  auto& unit = fixture.unit;
+
+  unit.setSource("void f() { int a; }\nint after;\n", "test.cc");
+  unit.parse({.checkTypes = true});
+
+  EXPECT_EQ(innermostScopeAt(unit, tokenIndexOf(unit, "a")), "f");
+  EXPECT_EQ(innermostScopeAt(unit, tokenIndexOf(unit, "after")), "");
+}
+
+TEST(ScopeExtent, aScopeWithNoExtentContainsNothing) {
+  MemoryLayoutFixture fixture;
+  auto& unit = fixture.unit;
+
+  unit.setSource("int x;\n", "test.cc");
+  unit.parse({.checkTypes = true});
+
+  // The global scope was not written anywhere, so it says nothing about what
+  // it contains rather than claiming everything.
+  EXPECT_FALSE(unit.globalScope()->extentBegin());
+  EXPECT_FALSE(unit.globalScope()->contains(SourceLocation{1}));
 }
