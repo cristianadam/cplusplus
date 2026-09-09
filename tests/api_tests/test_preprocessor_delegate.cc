@@ -259,6 +259,95 @@ TEST(PreprocessorDelegate, reports_an_include_guard) {
   EXPECT_EQ(delegate.guards, (std::vector<std::string>{"GUARDED_H"}));
 }
 
+// The tokens say which of them a macro produced, which the delegate cannot:
+// it reports the invocation, not each token that came out of it.
+
+namespace {
+
+// The kinds of the output tokens, with a marker for each flag. Kinds rather
+// than text, because the text at an expanded token's offset is the invocation
+// rather than what the macro replaced it with -- which is the point of the
+// offset, and what the last test here checks.
+auto tokenSummary(const std::string& source) -> std::vector<std::string> {
+  Control control;
+  SilentDiagnostics diagnostics;
+  Preprocessor preprocessor(&control, &diagnostics);
+  preprocessor.setCanResolveFiles(false);
+
+  std::vector<Token> tokens;
+  preprocessor.preprocess(source, "test.cc", tokens);
+
+  std::vector<std::string> result;
+  for (const Token& token : tokens) {
+    if (token.is(TokenKind::T_EOF_SYMBOL)) continue;
+    if (token.fileId() != std::uint32_t(preprocessor.mainSourceFileId())) continue;
+    std::string entry = Token::spell(token.kind());
+    if (token.macroExpanded()) entry += " expanded";
+    if (token.macroGenerated()) entry += " generated";
+    result.push_back(entry);
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(PreprocessorTokens, marks_nothing_when_no_macro_is_involved) {
+  EXPECT_EQ(tokenSummary("int x;\n"),
+            (std::vector<std::string>{"int", "<identifier>", ";"}));
+}
+
+TEST(PreprocessorTokens, marks_what_an_object_macro_produced) {
+  EXPECT_EQ(tokenSummary("#define ANSWER 42\nint x = ANSWER;\n"),
+            (std::vector<std::string>{"int", "<identifier>", "=",
+                                      "<integer_literal> expanded generated",
+                                      ";"}));
+}
+
+TEST(PreprocessorTokens, tells_a_macro_body_from_an_argument) {
+  // a and b come from what the caller wrote, the + comes from the body.
+  EXPECT_EQ(tokenSummary("#define ADD(a, b) a + b\nint x = ADD(p, q);\n"),
+            (std::vector<std::string>{"int", "<identifier>", "=",
+                                      "<identifier> expanded",
+                                      "+ expanded generated",
+                                      "<identifier> expanded", ";"}));
+}
+
+TEST(PreprocessorTokens, a_generated_token_points_at_the_invocation) {
+  Control control;
+  SilentDiagnostics diagnostics;
+  Preprocessor preprocessor(&control, &diagnostics);
+  preprocessor.setCanResolveFiles(false);
+
+  const std::string source = "#define ANSWER 42\nint x = ANSWER;\n";
+  std::vector<Token> tokens;
+  preprocessor.preprocess(source, "test.cc", tokens);
+
+  for (const Token& token : tokens) {
+    if (!token.macroGenerated()) continue;
+    // Not at the 42 in the #define: at the ANSWER that asked for it.
+    EXPECT_EQ(source.substr(token.offset(), token.length()), "ANSWER");
+  }
+}
+
+TEST(PreprocessorTokens, an_argument_points_at_what_the_caller_wrote) {
+  Control control;
+  SilentDiagnostics diagnostics;
+  Preprocessor preprocessor(&control, &diagnostics);
+  preprocessor.setCanResolveFiles(false);
+
+  const std::string source = "#define ID(x) x\nint y = ID(written);\n";
+  std::vector<Token> tokens;
+  preprocessor.preprocess(source, "test.cc", tokens);
+
+  int seen = 0;
+  for (const Token& token : tokens) {
+    if (!token.macroExpanded() || token.macroGenerated()) continue;
+    ++seen;
+    EXPECT_EQ(source.substr(token.offset(), token.length()), "written");
+  }
+  EXPECT_EQ(seen, 1);
+}
+
 TEST(PreprocessorDelegate, reports_nothing_without_a_delegate) {
   // The whole point of the default being off: none of this is worked out
   // unless someone asks for it. Nothing to assert but that it still runs.
