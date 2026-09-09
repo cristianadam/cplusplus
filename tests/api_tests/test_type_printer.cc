@@ -19,6 +19,11 @@
 // SOFTWARE.
 
 #include <cxx/control.h>
+#include <cxx/diagnostics_client.h>
+#include <cxx/memory_layout.h>
+#include <cxx/preprocessor.h>
+#include <cxx/symbols.h>
+#include <cxx/translation_unit.h>
 #include <cxx/types.h>
 #include <gtest/gtest.h>
 
@@ -228,4 +233,67 @@ TEST(TypePrinter, Functions) {
 
   ASSERT_EQ(to_string(variadicFunctionReturningUnsignedLong),
             "unsigned long (...)");
+}
+namespace {
+
+class SilentDiagnostics final : public DiagnosticsClient {
+ public:
+  void report(const Diagnostic&) override {}
+};
+
+// The type of the last thing the source declares at namespace scope.
+auto lastDeclaredType(const std::string& source, TranslationUnit& unit)
+    -> const Type* {
+  unit.preprocessor()->setCanResolveFiles(false);
+  unit.setSource(source, "test.cc");
+  unit.parse({.checkTypes = true});
+
+  const Type* type = nullptr;
+  for (Symbol* member : unit.globalScope()->members()) {
+    // A function is reached through the overload set it lives in.
+    if (auto* overloadSet = symbol_cast<OverloadSetSymbol>(member)) {
+      for (auto* function : overloadSet->declaredFunctions()) type = function->type();
+      continue;
+    }
+    if (member->type()) type = member->type();
+  }
+  return type;
+}
+
+}  // namespace
+
+TEST(TypePrinter, QualifiesANameByDefault) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("namespace N { class C {}; } N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type), "::N::C");
+}
+
+TEST(TypePrinter, OmitsTheEnclosingScopeWhenAsked) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("namespace N { class C {}; } N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "C");
+}
+
+TEST(TypePrinter, OmitsTheEnclosingScopeInsideAFunctionType) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // The option has to reach the parameters too, or the answer is half
+  // qualified.
+  const Type* type =
+      lastDeclaredType("namespace N { class C {}; } void f(N::C);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.omitEnclosingScope = true}), "void f(C)");
 }
