@@ -220,8 +220,25 @@ TEST(PreprocessorDelegate, reports_a_pragma) {
   EXPECT_EQ(pp->pragmas, (std::vector<std::string>{"once"}));
 }
 
-// Include guards are only found by reading a header, so this one drives the
-// preprocessor's own state machine and answers the request for the content.
+// A tool that keeps one translation unit per file preprocesses a header on
+// its own, so the guard has to be found there as well as on the way into an
+// include. Without it, such a tool sees a file that asks about a macro it
+// then defines, and cannot tell that the answer was its own doing.
+TEST(PreprocessorDelegate, reports_the_include_guard_of_the_main_file) {
+  Preprocessed pp(
+      "#ifndef GUARDED_H\n#define GUARDED_H\nint fromHeader;\n#endif\n");
+
+  EXPECT_EQ(pp->guards, (std::vector<std::string>{"GUARDED_H"}));
+}
+
+TEST(PreprocessorDelegate, reports_no_guard_for_an_unguarded_file) {
+  Preprocessed pp("#ifndef SOMETHING\nint a;\n#endif\nint b;\n");
+
+  EXPECT_TRUE(pp->guards.empty());
+}
+
+// This one drives the preprocessor's own state machine and answers the
+// request for the content, which is how a header is reached as an include.
 TEST(PreprocessorDelegate, reports_an_include_guard) {
   Control control;
   SilentDiagnostics diagnostics;
