@@ -30,6 +30,7 @@ endif()
 add_executable(test_api
     test_control.cc
     test_external_names.cc
+    test_preprocessor_delegate.cc
     test_type_printer.cc
 )
 
