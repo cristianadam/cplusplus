@@ -457,3 +457,27 @@ TEST(ScopeExtent, aScopeWithNoExtentContainsNothing) {
   EXPECT_FALSE(unit.globalScope()->extentBegin());
   EXPECT_FALSE(unit.globalScope()->contains(SourceLocation{1}));
 }
+
+TEST(PreprocessorDelegate, spells_out_the_body_of_a_macro_with_no_source) {
+  Control control;
+  SilentDiagnostics diagnostics;
+  Preprocessor preprocessor(&control, &diagnostics);
+  RecordingDelegate delegate(preprocessor);
+
+  preprocessor.setCanResolveFiles(false);
+  preprocessor.setPreprocessorDelegate(&delegate);
+
+  // Defined through the API, so there is no #define anywhere to quote. The
+  // body still has to say what it is, or two different values look alike.
+  preprocessor.defineMacro("ANSWER 42", "");
+  preprocessor.defineMacro("ADD(a, b) a + b", "");
+
+  std::vector<Token> tokens;
+  preprocessor.preprocess("int x;\n", "test.cc", tokens);
+
+  ASSERT_EQ(delegate.defined.size(), 2);
+  EXPECT_EQ(delegate.defined[0].name, "ANSWER");
+  EXPECT_EQ(delegate.defined[0].body, "42");
+  EXPECT_EQ(delegate.defined[1].name, "ADD");
+  EXPECT_EQ(delegate.defined[1].body, "a + b");
+}
