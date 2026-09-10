@@ -29,6 +29,7 @@ endif()
 
 add_executable(test_api
     test_ast_cursor.cc
+    test_record_layout.cc
     test_control.cc
     test_external_names.cc
     test_preprocessor_delegate.cc
