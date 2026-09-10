@@ -498,3 +498,92 @@ TEST(PreprocessorDelegate, spells_out_the_body_of_a_macro_with_no_source) {
   EXPECT_EQ(delegate.defined[1].name, "ADD");
   EXPECT_EQ(delegate.defined[1].body, "a + b");
 }
+
+// The file being read, which for an include is the file that wrote it: the
+// same name means different files in different places, so a tool that
+// resolves one has to know where it stands.
+TEST(Preprocessor, saysWhichFileItIsReading) {
+  MemoryLayout layout(64);
+  DiagnosticsClient diagnosticsClient;
+  TranslationUnit unit(&diagnosticsClient);
+  unit.control()->setMemoryLayout(&layout);
+
+  auto* preprocessor = unit.preprocessor();
+  preprocessor->setCanResolveFiles(false);
+
+  std::vector<std::string> askedFrom;
+  std::map<std::string, std::string> files{
+      {"outer.h", "#include \"inner.h\"\n"},
+      {"inner.h", "int fromInner;\n"},
+  };
+
+  unit.beginPreprocessing("#include \"outer.h\"\nint fromMain;\n", "main.cpp");
+  for (bool done = false; !done;) {
+    std::visit(
+        [&](auto&& state) {
+          using T = std::decay_t<decltype(state)>;
+          if constexpr (std::is_same_v<T, ProcessingComplete>) {
+            done = true;
+          } else if constexpr (std::is_same_v<T, PendingInclude>) {
+            askedFrom.push_back(preprocessor->currentFileName());
+            const auto& name =
+                std::get<QuoteInclude>(state.include).fileName;
+            state.resolveWith(name, false);
+          } else if constexpr (std::is_same_v<T, PendingFileContent>) {
+            auto it = files.find(state.fileName);
+            if (it == files.end())
+              state.setContent(std::nullopt);
+            else
+              state.setContent(it->second);
+          }
+        },
+        unit.continuePreprocessing());
+  }
+  unit.endPreprocessing();
+
+  ASSERT_EQ(askedFrom.size(), 2u);
+  EXPECT_EQ(askedFrom[0], "main.cpp");
+  EXPECT_EQ(askedFrom[1], "outer.h");
+}
+
+// A file that includes something which includes it back, with neither
+// guarding itself. Reading it as written has no end, so there is a depth
+// at which it stops and says so.
+TEST(Preprocessor, stopsAnIncludeCycleThatGuardsNothing) {
+  MemoryLayout layout(64);
+  DiagnosticsClient diagnosticsClient;
+  TranslationUnit unit(&diagnosticsClient);
+  unit.control()->setMemoryLayout(&layout);
+
+  auto* preprocessor = unit.preprocessor();
+  preprocessor->setCanResolveFiles(false);
+
+  std::map<std::string, std::string> files{
+      {"a.h", "#include \"b.h\"\n"},
+      {"b.h", "#include \"a.h\"\n"},
+  };
+
+  unit.beginPreprocessing("#include \"a.h\"\n", "main.cpp");
+  for (bool done = false; !done;) {
+    std::visit(
+        [&](auto&& state) {
+          using T = std::decay_t<decltype(state)>;
+          if constexpr (std::is_same_v<T, ProcessingComplete>) {
+            done = true;
+          } else if constexpr (std::is_same_v<T, PendingInclude>) {
+            const auto& name = std::get<QuoteInclude>(state.include).fileName;
+            state.resolveWith(name, false);
+          } else if constexpr (std::is_same_v<T, PendingFileContent>) {
+            auto it = files.find(state.fileName);
+            if (it == files.end())
+              state.setContent(std::nullopt);
+            else
+              state.setContent(it->second);
+          }
+        },
+        unit.continuePreprocessing());
+  }
+  unit.endPreprocessing();
+
+  SUCCEED();  // reaching here at all is the point
+}
