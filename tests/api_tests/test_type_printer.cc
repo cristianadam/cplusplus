@@ -297,3 +297,25 @@ TEST(TypePrinter, OmitsTheEnclosingScopeInsideAFunctionType) {
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(to_string(type, "f", {.omitEnclosingScope = true}), "void f(C)");
 }
+
+TEST(TypePrinter, WritesAnExceptionSpecificationByDefault) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f() noexcept;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f"), "void f() noexcept");
+}
+
+TEST(TypePrinter, OmitsTheExceptionSpecificationWhenAsked) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f() noexcept;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.omitExceptionSpecification = true}), "void f()");
+}
