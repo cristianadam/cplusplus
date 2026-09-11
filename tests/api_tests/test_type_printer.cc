@@ -522,3 +522,95 @@ TEST(TypePrinter, DoesNotPassTheNamesIntoANestedFunctionType) {
   EXPECT_EQ(to_string(type, "f", {.parameterNames = {"cb", "x"}}),
             "void f(void (*cb)(int, int))");
 }
+
+namespace {
+
+// Reads \a source, so that what it declares can be looked up.
+void read(const std::string& source, TranslationUnit& unit) {
+  unit.preprocessor()->setCanResolveFiles(false);
+  unit.setSource(source, "test.cc");
+  unit.parse({.checkTypes = true});
+}
+
+// The function \a in declares under \a name, the first of its overloads.
+auto functionNamed(TranslationUnit& unit, ScopeSymbol* in, std::string_view name)
+    -> Symbol* {
+  Symbol* found = qualifiedLookup(in, unit.control()->getIdentifier(name));
+  if (auto overloads = symbol_cast<OverloadSetSymbol>(found)) {
+    const auto& functions = overloads->declaredFunctions();
+    return functions.empty() ? nullptr : functions.front();
+  }
+  return found;
+}
+
+}  // namespace
+
+// What writing a definition somewhere else has to say it is a definition of.
+TEST(TypePrinter, WritesAMemberFunctionsNameForOutsideItsClass) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  read("namespace N { struct C { void f(); }; }", unit);
+  ScopeSymbol* ns = scopeNamed(unit, unit.globalScope(), "N");
+  ASSERT_NE(ns, nullptr);
+  ScopeSymbol* cls = scopeNamed(unit, ns, "C");
+  ASSERT_NE(cls, nullptr);
+  Symbol* function = functionNamed(unit, cls, "f");
+  ASSERT_NE(function, nullptr);
+
+  // Standing in the namespace, the class has to be written and N does not.
+  EXPECT_EQ(to_string(function, {.writtenIn = ns}), "C::f");
+
+  // Standing outside it, both do.
+  EXPECT_EQ(to_string(function, {.writtenIn = unit.globalScope()}), "N::C::f");
+
+  // Standing in the class, neither.
+  EXPECT_EQ(to_string(function, {.writtenIn = cls}), "f");
+}
+
+// A function is kept in the set of its overloads, which is no scope anybody
+// writes -- so it must not turn up in the name.
+TEST(TypePrinter, DoesNotWriteTheOverloadSetIntoTheName) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  read("struct C { void f(int); void f(double); };", unit);
+  ScopeSymbol* cls = scopeNamed(unit, unit.globalScope(), "C");
+  ASSERT_NE(cls, nullptr);
+  Symbol* function = functionNamed(unit, cls, "f");
+  ASSERT_NE(function, nullptr);
+
+  EXPECT_EQ(to_string(function, {.writtenIn = unit.globalScope()}), "C::f");
+}
+
+TEST(TypePrinter, WritesTheWholePathForANameWithNowhereToGo) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  read("namespace N { struct C { void f(); }; }", unit);
+  ScopeSymbol* ns = scopeNamed(unit, unit.globalScope(), "N");
+  ASSERT_NE(ns, nullptr);
+  ScopeSymbol* cls = scopeNamed(unit, ns, "C");
+  ASSERT_NE(cls, nullptr);
+  Symbol* function = functionNamed(unit, cls, "f");
+  ASSERT_NE(function, nullptr);
+
+  // No place named, so the answer is the path, leading :: included: that is
+  // what writtenIn means everywhere else too.
+  EXPECT_EQ(to_string(function), "::N::C::f");
+}
+
+TEST(TypePrinter, WritesNothingForANameThereIsNone) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  EXPECT_EQ(to_string(static_cast<Symbol*>(nullptr)), "");
+}
