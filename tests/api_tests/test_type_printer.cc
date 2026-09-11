@@ -614,3 +614,32 @@ TEST(TypePrinter, WritesNothingForANameThereIsNone) {
 
   EXPECT_EQ(to_string(static_cast<Symbol*>(nullptr)), "");
 }
+
+// A specialization is reached by the name of the template it specializes:
+// writing "S<int>" finds S, and S<int> is what that names here.
+TEST(TypePrinter, WritesASpecializationByTheNameOfItsTemplate) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type =
+      lastDeclaredType("template<typename T> struct S {}; S<int> s;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}), "S<int>");
+}
+
+TEST(TypePrinter, WritesAClassInsideASpecializationTheSameWay) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "template<typename T> struct S { struct iterator {}; };"
+      "S<int>::iterator it;",
+      unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}),
+            "S<int>::iterator");
+}
