@@ -408,6 +408,25 @@ TEST(TypePrinter, WritesTheWholePathWhereNothingShorterReachesIt) {
   EXPECT_EQ(to_string(type, "", {.writtenIn = s}), "::N::C");
 }
 
+TEST(TypePrinter, DoesNotWriteAShortNameAUsingDirectiveMadeReachable) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // A using directive is in force from where it is written onwards, and a
+  // scope does not record that. Nor does it say which file it was written
+  // in, and an answer written into a header must not lean on what the
+  // source file that includes it happens to say.
+  const Type* type = lastDeclaredType(
+      "namespace N { struct T {}; } using namespace N; struct C { T t; }; T x;",
+      unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* c = scopeNamed(unit, unit.globalScope(), "C");
+  ASSERT_NE(c, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = c}), "N::T");
+}
+
 TEST(TypePrinter, WritesAMemberClassFromInsideTheClass) {
   MemoryLayout layout(64);
   SilentDiagnostics diagnostics;
