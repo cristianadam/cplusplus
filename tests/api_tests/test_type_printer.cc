@@ -21,6 +21,8 @@
 #include <cxx/control.h>
 #include <cxx/diagnostics_client.h>
 #include <cxx/memory_layout.h>
+#include <cxx/name_lookup.h>
+#include <cxx/names.h>
 #include <cxx/preprocessor.h>
 #include <cxx/symbols.h>
 #include <cxx/translation_unit.h>
@@ -318,4 +320,123 @@ TEST(TypePrinter, OmitsTheExceptionSpecificationWhenAsked) {
   const Type* type = lastDeclaredType("void f() noexcept;", unit);
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(to_string(type, "f", {.omitExceptionSpecification = true}), "void f()");
+}
+
+namespace {
+
+// The namespace or class \a in declares under \a name.
+auto scopeNamed(TranslationUnit& unit, ScopeSymbol* in, std::string_view name)
+    -> ScopeSymbol* {
+  Symbol* found = qualifiedLookup(in, unit.control()->getIdentifier(name));
+  return found ? found->asScopeSymbol() : nullptr;
+}
+
+}  // namespace
+
+TEST(TypePrinter, WritesWhatWouldBeWrittenRatherThanThePath) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // Not ::N::C, which is what the path is: N is reached from where this is
+  // going, so N::C is what somebody standing there would write.
+  const Type* type =
+      lastDeclaredType("namespace N { class C {}; } N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}), "N::C");
+}
+
+TEST(TypePrinter, WritesTheBareNameWhereTheScopeReachesIt) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type =
+      lastDeclaredType("namespace N { class C {}; } N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* n = scopeNamed(unit, unit.globalScope(), "N");
+  ASSERT_NE(n, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = n}), "C");
+}
+
+TEST(TypePrinter, StopsAtTheFirstNameTheScopeReaches) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // Standing in A, B is reached and C is not, so B::C is what has to be
+  // written: neither the whole path nor the bare name is right here.
+  const Type* type = lastDeclaredType(
+      "namespace A { namespace B { class C {}; } } A::B::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* a = scopeNamed(unit, unit.globalScope(), "A");
+  ASSERT_NE(a, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = a}), "B::C");
+}
+
+TEST(TypePrinter, WritesPastANameThatMeansSomethingElseThere) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // There is a C in the global namespace as well, and it is not this one, so
+  // writing C there would name the wrong class.
+  const Type* type = lastDeclaredType(
+      "namespace N { class C {}; } class C {}; N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}), "N::C");
+}
+
+TEST(TypePrinter, WritesTheWholePathWhereNothingShorterReachesIt) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  // S has an N of its own, so from in there the namespace cannot be named at
+  // all without saying where to start looking. That is what the leading ::
+  // is for, and it is the only way the whole path is still written.
+  const Type* type = lastDeclaredType(
+      "namespace N { class C {}; } struct S { int N; }; N::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* s = scopeNamed(unit, unit.globalScope(), "S");
+  ASSERT_NE(s, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = s}), "::N::C");
+}
+
+TEST(TypePrinter, WritesAMemberClassFromInsideTheClass) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "namespace N { class C { public: class Inner {}; }; } N::C::Inner x;",
+      unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* n = scopeNamed(unit, unit.globalScope(), "N");
+  ASSERT_NE(n, nullptr);
+  ScopeSymbol* c = scopeNamed(unit, n, "C");
+  ASSERT_NE(c, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = c}), "Inner");
+  EXPECT_EQ(to_string(type, "", {.writtenIn = n}), "C::Inner");
+}
+
+TEST(TypePrinter, WritesEachNameOfAFunctionTypeForTheSameScope) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "namespace N { class C {}; } namespace M { class D {}; } N::C f(M::D);",
+      unit);
+  ASSERT_NE(type, nullptr);
+  ScopeSymbol* n = scopeNamed(unit, unit.globalScope(), "N");
+  ASSERT_NE(n, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.writtenIn = n}), "C f(M::D)");
 }
