@@ -643,3 +643,76 @@ TEST(TypePrinter, WritesAClassInsideASpecializationTheSameWay) {
   EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}),
             "S<int>::iterator");
 }
+
+// Where the spaces go around a pointer operator is a matter of style, and a
+// tool that rewrites declarations to a chosen one cannot work it out from the
+// answer afterwards.
+TEST(TypePrinter, WritesAPointerOperatorWhereTheStyleAsksFor) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("char *s;", unit);
+  ASSERT_NE(type, nullptr);
+
+  EXPECT_EQ(to_string(type, "s"), "char* s");
+  EXPECT_EQ(to_string(type, "s",
+                      {.spaceBeforePointerOperators = true,
+                       .spaceAfterPointerOperators = false}),
+            "char *s");
+  EXPECT_EQ(to_string(type, "s",
+                      {.spaceBeforePointerOperators = true,
+                       .spaceAfterPointerOperators = true}),
+            "char * s");
+  EXPECT_EQ(to_string(type, "s",
+                      {.spaceBeforePointerOperators = false,
+                       .spaceAfterPointerOperators = false}),
+            "char*s");
+}
+
+TEST(TypePrinter, WritesAReferenceTheSameWay) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("char c; char &r = c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "r",
+                      {.spaceBeforePointerOperators = true,
+                       .spaceAfterPointerOperators = false}),
+            "char &r");
+}
+
+// A type with nothing to name it after still has the space Overview writes
+// there, which is what a list showing types after a colon relies on.
+TEST(TypePrinter, WritesAPointerWithNoNameAfterIt) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("char *s;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "",
+                      {.spaceBeforePointerOperators = true,
+                       .spaceAfterPointerOperators = true}),
+            "char *");
+}
+
+// Inside parentheses the spelling is not a choice: the star belongs to what
+// follows it, so neither space is written there.
+TEST(TypePrinter, LeavesAPointerToAFunctionAlone) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void (*p)(int);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "p",
+                      {.spaceBeforePointerOperators = true,
+                       .spaceAfterPointerOperators = true}),
+            "void (*p)(int)");
+}
