@@ -66,7 +66,13 @@ export function gen_ast_h({ ast, output }: { ast: AST; output: string }) {
       members.forEach((m) => {
         switch (m.kind) {
           case "node":
-            emit(`  ${m.type}* ${m.name} = nullptr;`);
+            // The marker says this child was built rather than read, and it is
+            // written back out so that it survives the next generation.
+            emit(
+              `  ${m.type}* ${m.name} = nullptr;${
+                m.synthesized ? "  // synthesized" : ""
+              }`,
+            );
             break;
           case "node-list":
             emit(`  List<${m.type}*>* ${m.name} = nullptr;`);

@@ -41,6 +41,12 @@ export interface Node {
   kind: "node";
   name: string;
   type: string;
+
+  // Built while checking the types rather than read from the text, and said so
+  // in ast.h. It is a child like any other, but it is not part of what the node
+  // was written as: its locations are borrowed from the tokens it was made of,
+  // so it has no say in where the node begins and ends.
+  synthesized?: boolean;
 }
 
 export interface TokenList {
@@ -73,7 +79,7 @@ export function parseAST({ source }: ParseArgs): AST {
   const baseRx = /^\s*class (.+AST) : public AST {/;
   const classRx = /^\s*class (.+AST) final : public (.*AST) {/;
   const tokRx = /^\s+SourceLocation (\w+Loc);$/;
-  const astRx = /^\s+(\w*AST)\* (\w+) = nullptr;$/;
+  const astRx = /^\s+(\w*AST)\* (\w+) = nullptr;(?:\s*\/\/\s*(synthesized))?$/;
   const listRx = /^\s+List<(\w*AST)\*>\* (\w+) = nullptr;$/;
   const tokListRx = /^\s+List<(SourceLocation)>\* (\w+) = nullptr;$/;
   const attrRx =
@@ -132,7 +138,12 @@ export function parseAST({ source }: ParseArgs): AST {
         members.push({ kind: "token", name: tokMatch[1]! });
       } else if (astMatch) {
         //console.log(`  child ${astMatch[2]}: ${astMatch[1]}`)
-        members.push({ kind: "node", name: astMatch[2]!, type: astMatch[1]! });
+        members.push({
+          kind: "node",
+          name: astMatch[2]!,
+          type: astMatch[1]!,
+          synthesized: astMatch[3] !== undefined,
+        });
       } else if (listMatch) {
         //console.log(`  list ${listMatch[2]}: ${listMatch[1]}`)
         members.push({

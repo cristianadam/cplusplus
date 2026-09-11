@@ -20,7 +20,7 @@
 
 import { cpy_header } from "./cpy_header.ts";
 import { groupNodesByBaseType } from "./groupNodesByBaseType.ts";
-import type { AST } from "./parseAST.ts";
+import type { AST, Member } from "./parseAST.ts";
 import * as fs from "node:fs";
 
 export function gen_ast_cc({ ast, output }: { ast: AST; output: string }) {
@@ -34,11 +34,20 @@ export function gen_ast_cc({ ast, output }: { ast: AST; output: string }) {
 
   const astName = (name: string) => toKebapName(name.slice(0, -3)).slice(1);
 
+  // Where a node begins and ends is where its text does, so a child the type
+  // checker built has no say in it: its locations are borrowed from the tokens
+  // it was made of, which are inside the node already. A range-based for loop
+  // is the case that matters -- the calls to begin and end it gains are made of
+  // tokens from its head, and they are declared after its body, so they would
+  // otherwise cut the loop short of it.
+  const isWritten = (m: Member) =>
+    m.kind !== "attribute" && !(m.kind === "node" && m.synthesized);
+
   ast.nodes.forEach(({ name, members }) => {
     emit();
     emit(`auto ${name}::firstSourceLocation() -> SourceLocation {`);
     members.forEach((m) => {
-      if (m.kind === "attribute") return;
+      if (!isWritten(m)) return;
       emit(`  if (auto loc = cxx::firstSourceLocation(${m.name})) return loc;`);
     });
     emit(`  return {};`);
@@ -47,7 +56,7 @@ export function gen_ast_cc({ ast, output }: { ast: AST; output: string }) {
     emit();
     emit(`auto ${name}::lastSourceLocation() -> SourceLocation {`);
     [...members].reverse().forEach((m) => {
-      if (m.kind === "attribute") return;
+      if (!isWritten(m)) return;
       emit(`  if (auto loc = cxx::lastSourceLocation(${m.name})) return loc;`);
     });
     emit(`  return {};`);
