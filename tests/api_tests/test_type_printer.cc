@@ -459,3 +459,66 @@ TEST(TypePrinter, WritesEachNameOfAFunctionTypeForTheSameScope) {
   ASSERT_NE(n, nullptr);
   EXPECT_EQ(to_string(type, "f", {.writtenIn = n}), "C f(M::D)");
 }
+
+TEST(TypePrinter, LeavesTheParametersUnnamedByDefault) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f(int a, double b);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f"), "void f(int, double)");
+}
+
+TEST(TypePrinter, WritesTheParameterNamesItIsGiven) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f(int a, double b);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.parameterNames = {"a", "b"}}),
+            "void f(int a, double b)");
+}
+
+TEST(TypePrinter, LeavesAParameterUnnamedWhereNoNameIsGiven) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f(int a, double, char c);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.parameterNames = {"a", "", "c"}}),
+            "void f(int a, double, char c)");
+}
+
+// A name is written around the parameter, not after its type, which is the
+// whole reason the printer has to do this rather than the caller.
+TEST(TypePrinter, WritesAParameterNameInsideItsDeclarator) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f(void (*cb)(int), int a[4]);", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.parameterNames = {"cb", "a"}}),
+            "void f(void (*cb)(int), int* a)");
+}
+
+// The names are this function's. A function type written inside one of its
+// parameters has parameters of its own and they are not these.
+TEST(TypePrinter, DoesNotPassTheNamesIntoANestedFunctionType) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType("void f(void (*cb)(int, int));", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "f", {.parameterNames = {"cb", "x"}}),
+            "void f(void (*cb)(int, int))");
+}
