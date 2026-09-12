@@ -716,3 +716,34 @@ TEST(TypePrinter, LeavesAPointerToAFunctionAlone) {
                        .spaceAfterPointerOperators = true}),
             "void (*p)(int)");
 }
+
+// A type parameter is a depth and an index: one type stands for the first
+// parameter of every template there is, so it carries no name and is printed
+// as what it is. Told which declaration the type was read off, the printer
+// writes what it is called instead.
+TEST(TypePrinter, WritesTemplateParametersByTheirNames) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  read("template <class T>\n"
+       "struct S {\n"
+       "  template <typename U> U convert(T from, U to);\n"
+       "};\n",
+       unit);
+
+  ScopeSymbol* s = scopeNamed(unit, unit.globalScope(), "S");
+  ASSERT_NE(s, nullptr);
+  Symbol* convert = functionNamed(unit, s, "convert");
+  ASSERT_NE(convert, nullptr);
+
+  // Both lists are in play: T from the class's, U from the function's own.
+  EXPECT_EQ(
+      to_string(convert->type(), "convert", {.templateParametersOf = convert}),
+      "U convert(T, U)");
+
+  // And without being told, what it is rather than what it is called.
+  EXPECT_EQ(to_string(convert->type(), "convert"),
+            "type-param<0, 1> convert(type-param<0, 0>, type-param<0, 1>)");
+}
