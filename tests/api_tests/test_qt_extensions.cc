@@ -247,6 +247,14 @@ class Widget
     return text;
   };
 
+  // The whole of it, which is what an editor asked what the cursor is on
+  // has to compare against: there is no declaration of a property to find.
+  EXPECT_EQ(textOf(properties[0].firstToken, properties[0].lastToken),
+            "Q_PROPERTY ( const QString & title READ title WRITE setTitle "
+            "NOTIFY titleChanged FINAL )");
+  EXPECT_EQ(textOf(properties[1].firstToken, properties[1].lastToken),
+            "Q_PROPERTY ( int count MEMBER d -> count CONSTANT )");
+
   const auto& title = properties[0];
   ASSERT_NE(title.name, nullptr);
   EXPECT_EQ(title.name->name(), "title");
