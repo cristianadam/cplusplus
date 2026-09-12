@@ -392,6 +392,8 @@ void Frontend::Private::prepare() {
 void Frontend::Private::preparePreprocessor() {
   auto preprocessor = unit_->preprocessor();
 
+  preprocessor->setQtExtensions(cli.opt_fqt);
+
   if (cli.opt_P) {
     preprocessor->setOmitLineMarkers(true);
   }

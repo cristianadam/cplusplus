@@ -35,6 +35,7 @@ add_executable(test_api
     test_preprocessor_delegate.cc
     test_type_printer.cc
     test_instantiation_depth.cc
+    test_qt_extensions.cc
 )
 
 target_link_libraries(test_api
