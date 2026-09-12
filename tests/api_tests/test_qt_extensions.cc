@@ -217,3 +217,61 @@ TEST(QtExtensions, SurviveTheMacrosQtDefinesThemAs) {
   EXPECT_EQ(source.methodNamed(widget, "poke")->qtMethodKind(),
             QtMethodKind::kInvokable);
 }
+
+// What a Q_PROPERTY says, read the way moc reads it. The value written
+// after an item is a piece of source and not a name -- "d->value()" is one
+// -- so what is kept is where it stands, for its text to be read from.
+TEST(QtExtensions, SayWhatAPropertyDeclares) {
+  const std::string source = R"(
+class Widget
+{
+    Q_OBJECT
+    Q_PROPERTY(const QString &title READ title WRITE setTitle NOTIFY titleChanged FINAL)
+    Q_PROPERTY(int count MEMBER d->count CONSTANT)
+};
+)";
+
+  QtSource read{source, /*qtExtensions=*/true};
+  auto* widget = read.classNamed("Widget");
+  ASSERT_NE(widget, nullptr);
+
+  const auto& properties = widget->qtProperties();
+  ASSERT_EQ(properties.size(), 2);
+
+  const auto textOf = [&](SourceLocation first, SourceLocation last) {
+    std::string text;
+    for (auto loc = first; loc && loc <= last; loc = SourceLocation(loc.index() + 1)) {
+      if (!text.empty()) text += ' ';
+      text += read.unit.tokenText(loc);
+    }
+    return text;
+  };
+
+  const auto& title = properties[0];
+  ASSERT_NE(title.name, nullptr);
+  EXPECT_EQ(title.name->name(), "title");
+  EXPECT_EQ(textOf(title.firstTypeToken, title.lastTypeToken), "const QString &");
+
+  ASSERT_EQ(title.items.size(), 4);
+  EXPECT_EQ(title.items[0].name, "READ");
+  EXPECT_EQ(textOf(title.items[0].firstToken, title.items[0].lastToken), "title");
+  EXPECT_EQ(title.items[1].name, "WRITE");
+  EXPECT_EQ(textOf(title.items[1].firstToken, title.items[1].lastToken), "setTitle");
+  EXPECT_EQ(title.items[2].name, "NOTIFY");
+  EXPECT_EQ(textOf(title.items[2].firstToken, title.items[2].lastToken),
+            "titleChanged");
+
+  // Written alone, so there is no value to point at.
+  EXPECT_EQ(title.items[3].name, "FINAL");
+  EXPECT_FALSE(title.items[3].firstToken);
+
+  // And one whose value is more than a name.
+  const auto& count = properties[1];
+  ASSERT_NE(count.name, nullptr);
+  EXPECT_EQ(count.name->name(), "count");
+  EXPECT_EQ(textOf(count.firstTypeToken, count.lastTypeToken), "int");
+  ASSERT_EQ(count.items.size(), 2);
+  EXPECT_EQ(count.items[0].name, "MEMBER");
+  EXPECT_EQ(textOf(count.items[0].firstToken, count.items[0].lastToken),
+            "d -> count");
+}
