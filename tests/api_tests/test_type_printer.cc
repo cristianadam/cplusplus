@@ -333,6 +333,23 @@ TEST(TypePrinter, WritesAnInheritedNameWithNothingInFrontOfIt) {
   EXPECT_EQ(to_string(type), "::Base::Inner");
 }
 
+// And nobody can name such a namespace, so what it declares is named from
+// the scope around it by its own name alone -- the same as an inherited
+// name, and for the same reason: nothing has to be written in front of it.
+TEST(TypePrinter, WritesWhatAnUnnamedNamespaceDeclaresByItsOwnName) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "namespace { namespace N { class C {}; } }\n"
+      "N::C at_file_scope;\n",
+      unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type, "", {.writtenIn = unit.globalScope()}), "N::C");
+}
+
 // A namespace with no name of its own cannot be written, so a path
 // through it leaves it out: what reaches such a class is standing in the
 // file that declares it, and writing "::" for the namespace would name
