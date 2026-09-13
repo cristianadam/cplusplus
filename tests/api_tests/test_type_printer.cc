@@ -286,6 +286,25 @@ TEST(TypePrinter, OmitsTheEnclosingScopeWhenAsked) {
   EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "C");
 }
 
+// A tool with a rule per type matches the type it has a rule for by the
+// name the template was declared under: a setting about QList is about
+// every QList. It cannot take the arguments off the answer itself, a
+// type being written around a name -- "const QList<int> &" has the name
+// nowhere near the arguments.
+TEST(TypePrinter, OmitsTheTemplateArgumentsWhenAsked) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "template <typename T> class List {}; const List<int> &r = *new List<int>;",
+      unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type), "const ::List<int>&");
+  EXPECT_EQ(to_string(type, "", {.omitTemplateArguments = true}), "const ::List&");
+}
+
 TEST(TypePrinter, OmitsTheEnclosingScopeInsideAFunctionType) {
   MemoryLayout layout(64);
   SilentDiagnostics diagnostics;

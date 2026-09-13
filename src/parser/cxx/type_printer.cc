@@ -414,7 +414,11 @@ class TypePrinter {
 
     std::string out = to_string(type->symbol()->name());
 
-    if (type->symbol()->isSpecialization()) {
+    if (options_.omitTemplateArguments) {
+      // The name the class was declared under, which is what a tool with
+      // a rule per type has the rule for: a setting about QList is about
+      // every QList.
+    } else if (type->symbol()->isSpecialization()) {
       out += '<';
       std::string_view sep = "";
       for (const auto& arg :
