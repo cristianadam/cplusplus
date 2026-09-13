@@ -303,6 +303,22 @@ TEST(TypePrinter, WritesTemplateArgumentsForWhereTheyAreGoing) {
   EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "List<C>");
 }
 
+// A namespace with no name of its own cannot be written, so a path
+// through it leaves it out: what reaches such a class is standing in the
+// file that declares it, and writing "::" for the namespace would name
+// the scope above instead.
+TEST(TypePrinter, LeavesOutANamespaceWithNoName) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "namespace { namespace N { class C {}; } }\nN::C c;", unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type), "::N::C");
+}
+
 // A tool with a rule per type matches the type it has a rule for by the
 // name the template was declared under: a setting about QList is about
 // every QList. It cannot take the arguments off the answer itself, a
