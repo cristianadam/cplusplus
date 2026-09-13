@@ -286,6 +286,23 @@ TEST(TypePrinter, OmitsTheEnclosingScopeWhenAsked) {
   EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "C");
 }
 
+// The option has to reach the arguments of a template too, or the answer
+// is half qualified -- the same as for the parameters of a function.
+TEST(TypePrinter, WritesTemplateArgumentsForWhereTheyAreGoing) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "namespace N { class C {}; template <typename T> class List {}; }\n"
+      "N::List<N::C> items;",
+      unit);
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(to_string(type), "::N::List<::N::C>");
+  EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "List<C>");
+}
+
 // A tool with a rule per type matches the type it has a rule for by the
 // name the template was declared under: a setting about QList is about
 // every QList. It cannot take the arguments off the answer itself, a
