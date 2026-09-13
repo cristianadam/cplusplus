@@ -303,6 +303,36 @@ TEST(TypePrinter, WritesTemplateArgumentsForWhereTheyAreGoing) {
   EXPECT_EQ(to_string(type, "", {.omitEnclosingScope = true}), "List<C>");
 }
 
+// A class writes the name of whatever it inherits without saying where it
+// comes from, so a type written for a place inside it needs nothing in
+// front of that name either.
+TEST(TypePrinter, WritesAnInheritedNameWithNothingInFrontOfIt) {
+  MemoryLayout layout(64);
+  SilentDiagnostics diagnostics;
+  TranslationUnit unit(&diagnostics);
+  unit.control()->setMemoryLayout(&layout);
+
+  const Type* type = lastDeclaredType(
+      "class Base { public: class Inner {}; };\n"
+      "class Derived : public Base { public: Inner held; };\n"
+      "Base::Inner outside;\n",
+      unit);
+  ASSERT_NE(type, nullptr);
+
+  ClassSymbol* derived = nullptr;
+  for (Symbol* member : unit.globalScope()->members()) {
+    if (auto* klass = symbol_cast<ClassSymbol>(member)) {
+      if (klass->name() && to_string(klass->name()) == "Derived") derived = klass;
+    }
+  }
+  ASSERT_NE(derived, nullptr);
+
+  // The same type, written where the class that inherits the name is and
+  // where nothing inherits it.
+  EXPECT_EQ(to_string(type, "", {.writtenIn = derived}), "Inner");
+  EXPECT_EQ(to_string(type), "::Base::Inner");
+}
+
 // A namespace with no name of its own cannot be written, so a path
 // through it leaves it out: what reaches such a class is standing in the
 // file that declares it, and writing "::" for the namespace would name
