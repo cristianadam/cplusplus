@@ -675,7 +675,12 @@ auto Binder::declareTypeAlias(SourceLocation identifierLoc, TypeIdAST* typeId,
   auto name = unit_->identifier(identifierLoc);
   symbol->setName(name);
 
-  if (typeId) symbol->setType(typeId->type);
+  if (typeId) {
+    symbol->setType(typeId->type);
+    // What it is an alias of, as written: everything after the "=".
+    symbol->setTypeTokens(typeId->firstSourceLocation(),
+                          typeId->lastSourceLocation());
+  }
 
   if (auto classType = type_cast<ClassType>(symbol->type())) {
     auto classSymbol = classType->symbol();
@@ -2284,6 +2289,62 @@ auto Binder::declareTypedef(DeclaratorAST* declarator, const Decl& decl)
   applyAccessSpecifier(symbol);
   symbol->setName(name);
   symbol->setType(type);
+
+  // What it is a name for, as written: from the type specifier to the end
+  // of the declarator, which is where a pointer or an array bound stands.
+  // The declared name is in the middle of that -- "char *Name" -- and is
+  // left out by whoever reads the tokens, the way a parameter's name is.
+  // Unless what stands there is the class or enum being defined, whose
+  // every member is written out where the type is: "typedef struct { FILE
+  // *f; } luaL_Stream" is a luaL_Stream to a reader, not its body.
+  const auto definesItsType = ast_cast<ClassSpecifierAST>(decl.specs.typeSpecifier()) ||
+                              ast_cast<ElaboratedTypeSpecifierAST>(
+                                  decl.specs.typeSpecifier()) ||
+                              ast_cast<EnumSpecifierAST>(decl.specs.typeSpecifier());
+
+  if (auto typeSpecifier = !definesItsType ? decl.specs.typeSpecifier() : nullptr) {
+    auto first = typeSpecifier->firstSourceLocation();
+    // What stands in front of the type specifier and belongs to the type:
+    // the sign and the size of it -- "unsigned char" is a type specifier
+    // "char" with an "unsigned" before it -- and a cv-qualifier written
+    // the near way round. Nothing else can lead a typedef but "typedef"
+    // itself, which is no part of the type.
+    while (first.index() > 0) {
+      const auto before = SourceLocation(first.index() - 1);
+      switch (unit_->tokenKind(before)) {
+        case TokenKind::T_CONST:
+        case TokenKind::T_VOLATILE:
+        case TokenKind::T_SIGNED:
+        case TokenKind::T_UNSIGNED:
+        case TokenKind::T_SHORT:
+        case TokenKind::T_LONG:
+          first = before;
+          continue;
+        default:
+          break;
+      }
+      break;
+    }
+    // One typedef may declare several names -- "typedef char *a, b;" --
+    // and they share the type specifier, so for the second and later ones
+    // everything written for the earlier ones stands between the specifier
+    // and this declarator. There is no one run of tokens that is this
+    // name's type then, so nothing is recorded and it is printed from the
+    // type it resolves to, which is right if less like the source.
+    auto declaredEarlier = false;
+    if (declarator) {
+      for (auto at = typeSpecifier->lastSourceLocation();
+           at && at.index() < declarator->firstSourceLocation().index();
+           at = at.next()) {
+        if (unit_->tokenKind(at) == TokenKind::T_COMMA) declaredEarlier = true;
+      }
+    }
+
+    if (auto last = declarator ? declarator->lastSourceLocation()
+                               : typeSpecifier->lastSourceLocation()) {
+      if (!declaredEarlier) symbol->setTypeTokens(first, last);
+    }
+  }
 
   bool hasConflict = false;
 
